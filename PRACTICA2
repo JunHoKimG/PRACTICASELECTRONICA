@@ -1,0 +1,84 @@
+#include "mbed.h"
+#include "chrono" // Para usar sleep_for correctamente
+using namespace chrono;
+
+// Configuración de pines con pull-up internos
+DigitalIn BotonArranque(D5, PullUp);  
+DigitalIn BotonParo(D6, PullUp);      
+DigitalIn Guarda(D7, PullUp);         
+DigitalIn Temperatura(D8, PullUp);    
+
+DigitalOut led1(D9);   // Motor listo para arrancar
+DigitalOut led2(D10);  // Motor está trabajando
+DigitalOut led3(D11);  // Falla de guarda de seguridad
+DigitalOut led4(D12);  // Exceso de temperatura
+
+// Estados del sistema
+bool MotorCorriendo = false;  
+bool MotorListo = false;
+bool FallaGuarda = false;
+bool FallaTemperatura = false;
+
+void VerificacionMotor() {
+    // El motor está listo si la guarda está cerrada (switch en posición 1) 
+    // y la temperatura es normal (switch en posición 0)
+    if (Guarda.read() == 1 && Temperatura.read() == 0) { 
+        MotorListo = true;
+        led1 = 1;  
+        FallaGuarda = false;
+        FallaTemperatura = false;
+    } else {
+        MotorListo = false;
+        led1 = 0; 
+    }
+}
+
+int main() {
+    // Inicialización de LEDs
+    led1 = 0;
+    led2 = 0;
+    led3 = 0;
+    led4 = 0;
+    
+    while (true) {
+        VerificacionMotor();
+
+        // Arranque del motor
+        if (MotorListo && BotonArranque.read() == 0 && !MotorCorriendo) { 
+            MotorCorriendo = true;
+            led2 = 1;  // LED2: Motor en funcionamiento
+            led3 = 0;  // Reset falla de guarda
+            led4 = 0;  // Reset falla de temperatura
+        }
+
+        // Detección de fallas durante operación
+        if (MotorCorriendo) {
+            if (Guarda.read() == 0) {  // Guarda de seguridad abierta
+                MotorCorriendo = false;
+                FallaGuarda = true;
+                led3 = 1;
+                led2 = 0;
+            } else if (Temperatura.read() == 1) {  // Exceso de temperatura
+                MotorCorriendo = false;
+                FallaTemperatura = true;
+                led4 = 1;
+                led2 = 0;
+            }
+        }
+
+        // Botón de paro
+        if (BotonParo.read() == 0 && MotorCorriendo) {
+            MotorCorriendo = false;
+            led2 = 0;
+        }
+
+        // Parpadeo del LED1 cuando el sistema no está listo
+        if (!MotorListo) {
+            led1 = !led1; 
+            ThisThread::sleep_for(500ms);
+        }
+
+        // Pequeña espera para evitar rebotes
+        ThisThread::sleep_for(50ms);
+    }
+}
